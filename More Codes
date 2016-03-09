@@ -1,0 +1,61 @@
+Error Codes
+
+General
+700 - Error opening HTTP response writer
+703 - Error Creating/Opening temp file for HTML report
+704 - Error Creating/Opening temp file for CSV report
+705 - Error Opening temp report html file for uploading
+706 - Error Opening temp csv for uploading
+
+CSV Writer
+771 - IO Error
+772 - Write Folder Events (CSV Data Line)
+773 - Write File Events (CSV Data Line)
+774 - Error Closing Files
+
+Database
+
+2007 - Error Connecting to DB
+2008 - Database Init without Connection (Database:new)
+2009 - Database Init SQL Error (Database:new)
+2100 - Error Getting Events for File from Database (EventDataReader.getEventsForFile)
+2101 - Error Reading Event Record into Memory
+2200 - Error Getting Files for Parent
+2201 - Error Reading File Record into Memory
+2300 - Error Reading Folder (by ID)
+2301 - Error Getting Folders for Parent
+2302 - Error Reading Folders Record into Memory
+2400 - Error Reading User Data Record into Memory
+2500 - Parse Exception while Fetching Folder Data
+2501 - Parse Exception while Fetching File Events
+
+Status Codes (1xx)
+100 - Report URL called
+101 - URL Query String
+110 - Check Authorization to run report at Box
+120 - Report Data Initialized
+121 - Collecting Report Data from Database
+122 - Fetch Folder Data
+123 - Preparing Report Data
+128 - No Files Found to Report
+130 - Preparing Output
+131 - Preparing Output to Browser
+132 - Preparing Output to Memory
+133 - Preparing Output to Disk
+140 - Creating HTML Report Object
+141 - Writing HTML Report to Output
+142 - HTML Report Finished
+150 - Converting HTML to PDF
+160 - Writing CSV to Disk
+170 - Preparing Final Output
+171 - Preparing Upload to Box
+172 - Preparing Final Output Files
+173 - Creating HTML Output Buffer
+174 - Uploading Report File to Box
+175 - Uploading CSV File to Box
+179 - Uploading Complete
+180 - Emailing Report
+189 - Email Status...
+190 - Report Completed
+191 - Report Returned in Browser
+199 - Report Task Ended

@@ -1,0 +1,45 @@
+2016-Feb-11
+
+# Suffix Option for Reports Folder: None, Last, LastF, LastFirst, Login
+BoxReportFolderSuffix=Last
+
+## Logging Options
+## Path to individual log files
+
+# Log for single line report of successful report completion
+SuccessLog=/etc/DiscoveryReport/Logs/success.log
+
+# Log for single line report of error
+ErrorLog=/etc/DiscoveryReport/Logs/error.log
+
+# Log for Progress and results combined (leave blank or comment out for no Prog$
+ProgressLog=/etc/DiscoveryReport/Logs/progress.log
+
+
+
+New Process Status
+198 - Report Success: {filename} and {filename-csv} Created and Uploaded to [folders]
+179 - Upload Successful
+
+
+Log Success Format:
+<time> TaskID=xxx-xx-xxx Status="Success" CaseFolder="xxx" ReportFolder="xxx" ReportFileName="xxx" CSVFileName="xxx" EmailedTo="xxx<xxx@xxx.xxx>"
+
+Log Error Format:
+<time> TaskID=xxx-xx-xxx Status="Error" ErrorCode=#### SubErrorCode=### Module=xxxx:xxx Message="xxxxx" Info="xxxxx" (assorted extra item specific fields) (Java Error Info and Partial StackTrace)
+
+Item Specific Fields:
+749: UploadName
+748: ResourceName, ResourceID
+747: ResourceName, ResourceID
+746: ReportFolderID, ReportFolderName
+744: FolderName
+743: ItemName, ItemID
+741: FolderID
+730: UserID, UserName
+701: UserID, UserName, UserLogin
+721: ClientID, ClientSecret, AuthCode
+2500: FolderID, ParentID
+2501: FileID, EventID
+2007: URL, Host, Port, Database, UserName, Password
+2400: UserID
