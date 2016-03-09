@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<web-app version="3.1" xmlns="http://xmlns.jcp.org/xml/ns/javaee" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/web-app_3_1.xsd">
+    <servlet>
+        <servlet-name>DiscoveryReport</servlet-name>
+        <servlet-class>com.efiia.discoveryreport.DiscoveryReport</servlet-class>
+        <init-param>
+            <description>List of allowed email suffixes for producting reports, Be sure to start with a '@' to ensure that only those email domains are permitted</description>
+            <param-name>AllowedAddressSuffixes</param-name>
+            <param-value>@usdoj.gov, @efiia.com</param-value>
+        </init-param>
+        <init-param>
+            <description>Splunk Host Name (example: splunk.company.com)</description>
+            <param-name>SplunkHost</param-name>
+            <param-value>splunk.zarack.com</param-value>
+        </init-param>
+        <init-param>
+            <description>Splunk Server Login Name</description>
+            <param-name>SplunkLogin</param-name>
+            <param-value>admin</param-value>
+        </init-param>
+        <init-param>
+            <description>Splunk Server Password</description>
+            <param-name>SplunkPassword</param-name>
+            <param-value>Boring123!</param-value>
+        </init-param>
+        <init-param>
+            <description>Splunk Server Listening Port (typically 8089)</description>
+            <param-name>SplunkPort</param-name>
+            <param-value>8089</param-value>
+        </init-param>
+        <init-param>
+            <description>Fully Qualified Web Address for Stylesheets</description>
+            <param-name>WebStyleSheetURL</param-name>
+            <param-value>https://localhost:8443/dr/styles/layout.css</param-value>
+        </init-param>
+        <init-param>
+            <description>Fully Qualified Web Path to Media Files</description>
+            <param-name>WebMediaHomeURL</param-name>
+            <param-value>https://localhost:8443/dr/media/</param-value>
+        </init-param>
+        <init-param>
+            <description>Box API Client ID</description>
+            <param-name>BoxClientID</param-name>
+            <param-value>ew43n8gococ6opnqs9xreduf92s7la1o</param-value>
+        </init-param>
+        <init-param>
+            <description>Box API Client Secret</description>
+            <param-name>BoxClientSecret</param-name>
+            <param-value>iZWTlIbOOwAYRYceQt14azCerOqO06Cv</param-value>
+        </init-param>
+        <init-param>
+            <description>Where to place the report on Box: BoxNone, BoxRoot, BoxCase</description>
+            <param-name>BoxReportDest</param-name>
+            <param-value>BoxNone</param-value>
+        </init-param>
+        <init-param>
+            <description>Complete path to the HTML to PDF converter - wkhtmltopdf is the tested utility</description>
+            <param-name>HTML2PDFUtility</param-name>
+            <param-value>/usr/local/bin/wkhtmltopdf</param-value>
+        </init-param>
+        <init-param>
+            <description>Optional additional options to the HTML convertor (pre file names)</description>
+            <param-name>HTML2PDFUtilOptions</param-name>
+            <param-value></param-value>
+        </init-param>
+        <init-param>
+            <description>Flag to determine if a report is also emailed to the Requestors's account</description>
+            <param-name>EmailReportFlag</param-name>
+            <param-value>Yes</param-value>
+        </init-param>
+        <init-param>
+            <description>Plain text message to include in the email sent to the Requestor when attaching a Discovery Report</description>
+            <param-name>EmailMessageText</param-name>
+            <param-value>Attached is a PDF with the requested Discovery Report</param-value>
+        </init-param>
+        <init-param>
+            <description>Message return to Box User if not authorized to run this report</description>
+            <param-name>MsgUnauthorizedRequestor</param-name>
+            <param-value>The Discovery Report my only be accessed by US Department of Justice employees</param-value>
+        </init-param>
+        <init-param>
+            <description>Messaged returned to Box User if the requested folder(s) have no files</description>
+            <param-name>MsgNothingToReport</param-name>
+            <param-value>There are no files in the requested folder</param-value>
+        </init-param>
+        <init-param>
+            <description>Messaged retunred to Box user when an email has been sent - Parameters(%#$s): 1=Report File Name, 2=Box User Name, 3=Box User Email</description>
+            <param-name>MsgEmailSent</param-name>
+            <param-value>A Discovery Report for this Folder has been emailed to you at %3$s</param-value>
+        </init-param>
+        <init-param>
+            <description>Message returned to Box User when a report has been uploaded - Parameters(%#$s): 1=Report File Name, 2=Root Folder, 3=Local Folder</description>
+            <param-name>MsgBoxUpload</param-name>
+            <param-value>"%1$s Created and Uploaded to %2$s/%3$s Folder</param-value>
+        </init-param>
+        <load-on-startup>1</load-on-startup>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>DiscoveryReport</servlet-name>
+        <url-pattern>/report</url-pattern>
+    </servlet-mapping>
+    <session-config>
+        <session-timeout>
+            30
+        </session-timeout>
+    </session-config>
+    <resource-ref>
+        <description>Resource reference to a factory for javax.mail.Session
+    instances that may be used for sending electronic mail
+    messages, preconfigured to connect to the appropriate
+    SMTP server.</description>
+        <res-ref-name>mail/Session</res-ref-name>
+        <res-type>javax.mail.Session</res-type>
+        <res-auth>Container</res-auth>
+        <res-sharing-scope>Shareable</res-sharing-scope>
+    </resource-ref>
+</web-app>
