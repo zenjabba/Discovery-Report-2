@@ -38,6 +38,11 @@ public class FileEvent {
 
 	public enumFileEvent getType() { return Type; }
 	public String getActor() {
+		/* kludge for User ID '1'
+		 * added 27-Apr-2016 - LEN
+		 */
+		if ( ActorID.equals( "1" ) )
+			return "SYSTEM";
 		/* kludge for "Someone" */
 		if ( Actor.toLowerCase().equals(  "someone" ))
 			return "USAFx";

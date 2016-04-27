@@ -75,18 +75,25 @@ public class DataBase {
 
 	}
 
-	public static synchronized void Connect() throws SQLException {
+	public static synchronized void Connect() throws DRException {
 		Reconnect();
 
 		Logger myLogger = Logger.getLogger( "org.apache.catalina.logger.SystemOutLogger");
 		myLogger.logp( Level.INFO, DiscoveryReport.APPNAME, DiscoveryReport.APPVER, String.format( "Connected to Database at: %s:%s as user %s", host, database, username ));
 	}
 
-	public static synchronized void Reconnect() throws SQLException {
+	public static synchronized void Reconnect() throws DRException {
 
 		// test connection
-		if ( conn != null )
-			disconnect();
+		try {
+			if ( conn != null && !conn.isClosed() )
+				conn.close();
+
+        } catch ( SQLException sqx) {
+			DRException drx = new DRException( 2106, "Database:disconnect", "Reconnect:SQLCloseConnection", sqx);
+			drx.setDebug( DataBase.getConfigInfo() );
+			throw ( drx );
+	    }
 
         try {
 			org.postgresql.Driver driver = new org.postgresql.Driver();
@@ -96,25 +103,14 @@ public class DataBase {
 			if ( conn == null )
 				throw new SQLException( "No SQL Connection Made" );
 
-        } catch ( SQLException e) {
-            e.printStackTrace();
-			throw e;
+        } catch ( SQLException sqx) {
+			DRException drx = new DRException( 2105, "Database:connect", "Reconnect:SQLGetConnection", sqx);
+			drx.setDebug( DataBase.getConfigInfo() );
+			throw ( drx );
 	    }
     }
 
 	private final static String UNIQUE_CONSTRAINT_VIOLATION = "23505";
-
-	protected static synchronized void disconnect() throws SQLException {
-
-		try {
-			if ( conn != null && !conn.isClosed() )
-				conn.close();
-
-		} catch ( SQLException e ) {
-			e.printStackTrace();
-			throw ( e );
-		}
-	}
 
 	private PreparedStatement stmtInsert;
 	private ArrayList<PreparedStatement> stmtSelect;
@@ -131,7 +127,7 @@ public class DataBase {
 	public DataBase( String pInsert, String[] pSelect, String[] pUpdate ) throws DRException {
 
 		if ( conn == null )
-			throw new DRException( 2008, "Database:new", "Connection Missing" );
+			throw new DRException( 2101, "Database:new", "Database Connection Missing" );
 
 		try {
 			stmtInsert = ( pInsert != null ? conn.prepareStatement( pInsert, Statement.RETURN_GENERATED_KEYS ) : null );
@@ -153,7 +149,7 @@ public class DataBase {
 			}
 
 		} catch ( SQLException ex ) {
-			throw new DRException( 2009, "Database:new", ex );
+			throw new DRException( 2102, "Database:new", "Prepare Statements", ex );
 			//throw new ExceptionInInitializerError( ex );
 		}
 	}

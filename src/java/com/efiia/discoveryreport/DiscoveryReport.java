@@ -42,12 +42,14 @@ public class DiscoveryReport extends HttpServlet {
 	private final static int APICONFIGFILEREADERROR = 2003;
 	private final static int APICONFIGMISSINGCLIENTID = 2005;
 	private final static int APICONFIGMISSINGCLIENTSECRET = 2006;
-	private final static int APICONNECTTODATABASE = 2007;
 
 	private final static int CONFIGFILECANTREAD = 2001;
 	private final static int CONFIGFILEREADERROR = 2003;
 	private final static int CONFIGFILECAPNOTANUMBER = 2008;
 
+	private final static int CANTINITMAIL = 2009;
+
+	private final static String REPORTFOLDERBASENAME = "Reports";
 	/**
 	 * Handles the HTTP <code>GET</code> method.
 	 *
@@ -100,8 +102,16 @@ public class DiscoveryReport extends HttpServlet {
 //	public final static String APPDATE = "18-Feb-2016";
 //	public final static String APPVER = "2.2.2c";			// Fix unmanaged error message
 //	public final static String APPDATE = "19-Feb-2016";
-	public final static String APPVER = "2.2.3";			// Root Folder Lockdown option
-	public final static String APPDATE = "10-Mar-2016";
+//	public final static String APPVER = "2.2.3";			// Root Folder Lockdown option
+//	public final static String APPDATE = "10-Mar-2016";
+//	public final static String APPVER = "2.2.4";			// Root Folder Pre-Check
+//	public final static String APPDATE = "15-Mar-2016";
+//	public final static String APPVER = "2.2.5";			// Error clean up
+//	public final static String APPDATE = "21-Mar-2016";
+//	public final static String APPVER = "2.2.6";			// Fix for emdash display in Box Pop-up
+//	public final static String APPDATE = "11-Apr-2016";
+	public final static String APPVER = "2.2.7";			// Fix for get folder events, User 1 as "SYSTEM"
+	public final static String APPDATE = "27-Apr-2016";
 
 	/**
 	 * Returns a short description of the servlet.
@@ -155,15 +165,18 @@ public class DiscoveryReport extends HttpServlet {
 
 	// defaults strings to something usable
 	private String EmailTemplate = null;
-	private String MsgUnauthoized = "Unauthorized User";
+
+	// Config File Information Messages
 	private String MsgNothingToReport = "Nothing to report";
 	private String MsgBoxUpload = "0:%0$s; 1:%1$s; 2:%2$s Folder";
 	private String MsgEmailSent =  "%s eMailed to %s/%s";
 	private String MsgPending = "Files Pending - Try Later";
+	private String MsgBoxAndEmailSuccess = null;
+
+	// Config File Error Messages
+	private String MsgUnauthorized = "Unauthorized User";
 	private String MsgTooManyFiles = "Too Many Files in Report Folders";
 	private String MsgNotRoot = "Not Root Folder";
-
-	private String MsgBoxAndEmailSuccess = null;
 
 	// new feb 2016
 	// logging modules
@@ -171,6 +184,162 @@ public class DiscoveryReport extends HttpServlet {
 	private File LogSuccessSplunk = null;
 	private File LogErrorsSplunk = null;
 	private File LogProgressSplunk = null;
+
+	// generical global error that prevents reports from running at all
+	int GlobalError = 0;
+	String GlobalErrorMessage = null;
+
+	private boolean loadMail;
+
+	private void readBoxConfig( File pConfigDir ) throws DRException {
+		// read box api file;
+		File confFile = new File( pConfigDir, "reporter.boxapi.config" );
+		if ( !confFile.canRead() )
+			throw new DRException( APICONFIGFILECANTREAD, "DiscoverReportGenerator:init(1)", String.format( "Config File %s Not Found/Readable", confFile.toString()) );
+
+		// connect to local database
+		Properties propsAPI = new Properties();
+		try (FileInputStream in = new FileInputStream(confFile )) {
+			propsAPI.load( in );
+		} catch ( IOException ex ) {
+			throw new DRException( APICONFIGFILEREADERROR, "DGR:init(2)", "Read Property File", ex );
+		}
+
+		BoxClientID = propsAPI.getProperty( "ClientID" );
+		BoxClientSecret = propsAPI.getProperty( "ClientSecret" );
+
+		if ( BoxClientID == null )
+			throw new DRException( APICONFIGMISSINGCLIENTID, "DiscoverReportGenerator:init(2)", String.format( "Config File %s Missing Box API ClientID", confFile.toString() ));
+		if ( BoxClientSecret == null )
+			throw new DRException( APICONFIGMISSINGCLIENTSECRET, "DiscoverReportGenerator:init(4)", String.format( "Config File %s Missing Box API Client Secret", confFile.toString() ));
+	}
+
+	private void readReportConfig( File pConfigDir ) throws DRException {
+
+		// now read the Report's config
+		File confFile = new File( pConfigDir, "reporter.config" );
+		if ( !confFile.canRead() )
+			throw new DRException( CONFIGFILECANTREAD, "DiscoverReportGenerator:init(5)", String.format( "Config File %s Not Found/Readable", confFile.toString()) );
+
+		// connect to
+		Properties propsRPT = new Properties();
+		try (FileInputStream in = new FileInputStream(confFile )) {
+			propsRPT.load( in );
+		} catch ( IOException ex ) {
+			throw new DRException( CONFIGFILEREADERROR, "DiscoverReportGenerator:init(6)", "Read Property File", ex );
+		}
+
+		String x;
+
+		// new logging modules - do first in case there are any issues
+		x = propsRPT.getProperty( "ErrorLog" );
+		if ( x == null )
+			x = propsRPT.getProperty( "ErrorLogSplunk" );
+		if ( x != null ) {
+			LogErrorsSplunk = new File( x );
+			ErrorWriter.setLogWriter( LogErrorsSplunk );
+		}
+		x = propsRPT.getProperty( "SuccessLog" );
+		if ( x == null )
+			x = propsRPT.getProperty( "SuccessLogSplunk" );
+		if ( x != null ) {
+			LogSuccessSplunk = new File( x );
+			SuccessWriter.setLogWriter( LogSuccessSplunk );
+		}
+		x = propsRPT.getProperty( "ProgressLogSplunk" );
+		if ( x != null )
+			LogProgressSplunk = new File( x );
+
+		x = propsRPT.getProperty( "ProgressLog" );
+		if ( x != null )
+			LogProgress = new File( x );
+
+
+		x = propsRPT.getProperty( "AllowedAddressSuffixes" );
+		AllowedAddressSuffixes = x.split( "," );
+		for ( int i = 0; i < AllowedAddressSuffixes.length; i++ )
+			AllowedAddressSuffixes[i] = AllowedAddressSuffixes[i].trim();		// get rid of extra white space in the xml list
+
+		OutStyleSheet = propsRPT.getProperty( "WebStyleSheetURL" );
+		OutMediaHome = propsRPT.getProperty( "WebMediaHomeURL" );
+
+		FileNameFormat = "USAfx Discovery Report: %1$s - %2$s";
+		ReportDateFormat = "yyyy-MM-dd hh:mm aa zz";
+		ReportDateFormatExpanded = "%1$tB %1$te%2$s, %1$tY at %1$tI:%1$tM %1$Tp %1$tZ";
+
+		x = propsRPT.getProperty( "HTML2PDFUtility" );
+		if ( x != null )
+			Converter = new HTML2PDF( x, propsRPT.getProperty( "HTML2PDFUtilOptions" ));
+
+		BoxReportDest = enumBoxReportDest.getValueOf( propsRPT.getProperty( "BoxReportDest" ));		// Root or Case Folder
+		BoxReportFolderNameStyle = enumBoxReportFolderSuffix.getValueOf( propsRPT.getProperty( "BoxReportFolderSuffix" ));
+
+		// added Mar 2016
+		// "AllowSubFolderReports" Y or N - invert the state to RootFolderLockdown
+		x = propsRPT.getProperty( "AllowSubFolderReports" );
+		if ( x != null && Character.toLowerCase( x.charAt( 0 )) != 'y' )
+			RootFolderLockdown = true;
+		else
+			RootFolderLockdown = false;
+
+		x = propsRPT.getProperty( "CSVFlag" );
+		if ( x != null && Character.toLowerCase( x.charAt( 0 )) == 'y')
+			CSVFlag = true;
+		else
+			CSVFlag = false;
+
+		x = propsRPT.getProperty( "EmailReportFlag" );
+		loadMail = ( x != null && Character.toLowerCase( x.charAt( 0 )) == 'y' ? true : false );
+
+		x = propsRPT.getProperty( "FileCap" );
+		if ( x != null ) {
+			try {
+				int fc = Integer.parseInt( x );
+				ReportData.setCapCount( fc );
+			} catch ( NumberFormatException nfe ) {
+				throw new DRException( CONFIGFILECAPNOTANUMBER, "DiscoveryReportGenerator:init(7)", nfe );
+			}
+		}
+
+		// strings
+		x = propsRPT.getProperty( "EmailMessageText" );
+		if ( x != null )
+			EmailTemplate = x + "\n";
+		x = propsRPT.getProperty( "MsgUnauthorizedRequestor");
+		if ( x != null )
+			MsgUnauthorized = x;
+		x = propsRPT.getProperty( "MsgBoxUpload" );
+		if ( x != null )
+			MsgBoxUpload = x;
+		x = propsRPT.getProperty( "MsgNothingToReport" );
+		if ( x != null )
+			MsgNothingToReport = x;
+		x = propsRPT.getProperty( "MsgEmailSent" );
+		if ( x != null )
+			MsgEmailSent = x;
+		x = propsRPT.getProperty( "MsgBoxAndEmailSuccess" );
+		if ( x != null )
+			MsgBoxAndEmailSuccess = x;
+		x = propsRPT.getProperty( "MsgTryLater" );
+		if ( x != null )
+			MsgPending = x;
+		x = propsRPT.getProperty( "MsgTooManyFiles" );
+		if ( x != null )
+			MsgTooManyFiles = x;
+		x = propsRPT.getProperty( "MsgNotRoot" );
+		if ( x != null )
+			MsgNotRoot = x;
+
+		ReportMode = ReportingMode.HTMLinMemory;
+		if ( BoxReportDest == enumBoxReportDest.BOXNONE && Mailer == null )
+			ReportMode = ReportingMode.HTMLtoBrowser;
+		else if ( Converter != null || Mailer != null )
+			ReportMode = ReportingMode.PDFFile;
+
+		// override manually for testing
+		// ReportMode = ReportingMode.HTMLtoBrowser;
+
+	}
 
 	@Override
 	public void init( ServletConfig pxConfig ) throws ServletException {
@@ -189,174 +358,47 @@ public class DiscoveryReport extends HttpServlet {
 		String jHome = System.getProperty( "java.home" );
 		myLogger.logp( Level.INFO, APPNAME, APPVER, String.format( "Java Version Info: %s: %s, Home: %s", jVendor, jVersion, jHome ));
 
+		int localErrorNo = 0;
+		String localErrorMsg = "init";
+
 		try {
 			/* get config location from web.xml */
 			File pConfigDir = new File( "/etc/discoveryreport" );
-			myLogger.logp( Level.INFO, APPNAME, APPVER, String.format( "Reading Configuration File from: %s", pConfigDir.toString() ));
+			myLogger.logp( Level.INFO, APPNAME, APPVER, String.format( "Reading Configuration Files from: %s", pConfigDir.toString() ));
 
-			// read box api file;
-			File confFile = new File( pConfigDir, "reporter.boxapi.config" );
-			if ( !confFile.canRead() )
-				throw new DRException( APICONFIGFILECANTREAD, "DiscoverReportGenerator:init(1)", String.format( "Config File %s Not Found/Readable", confFile.toString()) );
+			// moved so that log files can capture start up errors
 
-			// connect to local database
-			Properties propsAPI = new Properties();
-			try (FileInputStream in = new FileInputStream(confFile )) {
-				propsAPI.load( in );
-			} catch ( IOException ex ) {
-				throw new DRException( APICONFIGFILEREADERROR, "DGR:init(2)", "Read Property File", ex );
-			}
+			readReportConfig( pConfigDir );
+			readBoxConfig( pConfigDir );
 
-			BoxClientID = propsAPI.getProperty( "ClientID" );
-			BoxClientSecret = propsAPI.getProperty( "ClientSecret" );
-
-			if ( BoxClientID == null )
-				throw new DRException( APICONFIGMISSINGCLIENTID, "DiscoverReportGenerator:init(2)", String.format( "Config File %s Missing Box API ClientID", confFile.toString() ));
-			if ( BoxClientSecret == null )
-				throw new DRException( APICONFIGMISSINGCLIENTSECRET, "DiscoverReportGenerator:init(4)", String.format( "Config File %s Missing Box API Client Secret", confFile.toString() ));
-
-			// now read the Report's config
-			confFile = new File( pConfigDir, "reporter.config" );
-			if ( !confFile.canRead() )
-				throw new DRException( CONFIGFILECANTREAD, "DiscoverReportGenerator:init(5)", String.format( "Config File %s Not Found/Readable", confFile.toString()) );
-
-			// connect to local database
-			Properties propsRPT = new Properties();
-			try (FileInputStream in = new FileInputStream(confFile )) {
-				propsRPT.load( in );
-			} catch ( IOException ex ) {
-				throw new DRException( CONFIGFILEREADERROR, "DiscoverReportGenerator:init(6)", "Read Property File", ex );
-			}
-
-			String x = propsRPT.getProperty( "AllowedAddressSuffixes" );
-			AllowedAddressSuffixes = x.split( "," );
-			for ( int i = 0; i < AllowedAddressSuffixes.length; i++ )
-				AllowedAddressSuffixes[i] = AllowedAddressSuffixes[i].trim();		// get rid of extra white space in the xml list
-
-			OutStyleSheet = propsRPT.getProperty( "WebStyleSheetURL" );
-			OutMediaHome = propsRPT.getProperty( "WebMediaHomeURL" );
-
-			FileNameFormat = "USAfx Discovery Report: %1$s - %2$s";
-			ReportDateFormat = "yyyy-MM-dd hh:mm aa zz";
-			ReportDateFormatExpanded = "%1$tB %1$te%2$s, %1$tY at %1$tI:%1$tM %1$Tp %1$tZ";
-
-			x = propsRPT.getProperty( "HTML2PDFUtility" );
-			if ( x != null )
-				Converter = new HTML2PDF( x, propsRPT.getProperty( "HTML2PDFUtilOptions" ));
-
-			BoxReportDest = enumBoxReportDest.getValueOf( propsRPT.getProperty( "BoxReportDest" ));		// Root or Case Folder
-			BoxReportFolderNameStyle = enumBoxReportFolderSuffix.getValueOf( propsRPT.getProperty( "BoxReportFolderSuffix" ));
-
-			// added Mar 2016
-			// "AllowSubFolderReports" Y or N - invert the state to RootFolderLockdown
-			x = propsRPT.getProperty( "AllowSubFolderReports" );
-			if ( x != null && Character.toLowerCase( x.charAt( 0 )) != 'y' )
-				RootFolderLockdown = true;
-			else
-				RootFolderLockdown = false;
-
-			x = propsRPT.getProperty( "CSVFlag" );
-			if ( x != null && Character.toLowerCase( x.charAt( 0 )) == 'y')
-				CSVFlag = true;
-			else
-				CSVFlag = false;
-
-			x = propsRPT.getProperty( "EmailReportFlag" );
-			if ( x != null && Character.toLowerCase( x.charAt( 0 )) == 'y')
+			if ( loadMail ) {
+				localErrorNo = CANTINITMAIL;
+				localErrorMsg = "Initalize Mail Utility";
 				Mailer = new MailUtility();		// needs a newline afterwards to be pretty
-
-			x = propsRPT.getProperty( "FileCap" );
-			if ( x != null ) {
-				try {
-					int fc = Integer.parseInt( x );
-					ReportData.setCapCount( fc );
-				} catch ( NumberFormatException nfe ) {
-					throw new DRException( CONFIGFILECAPNOTANUMBER, "DiscoveryReportGenerator:init(7)", nfe );
-				}
+				localErrorNo = 0;
+				localErrorMsg = "init";
 			}
-
-			// strings
-			x = propsRPT.getProperty( "EmailMessageText" );
-			if ( x != null )
-				EmailTemplate = x + "\n";
-			x = propsRPT.getProperty( "MsgUnauthorizedRequestor");
-			if ( x != null )
-				MsgUnauthoized = x;
-			x = propsRPT.getProperty( "MsgBoxUpload" );
-			if ( x != null )
-				MsgBoxUpload = x;
-			x = propsRPT.getProperty( "MsgNothingToReport" );
-			if ( x != null )
-				MsgNothingToReport = x;
-			x = propsRPT.getProperty( "MsgEmailSent" );
-			if ( x != null )
-				MsgEmailSent = x;
-			x = propsRPT.getProperty( "MsgPending" );
-			if ( x != null )
-				MsgPending = x;
-			x = propsRPT.getProperty( "MsgTooManyFiles" );
-			if ( x != null )
-				MsgTooManyFiles = x;
-			x = propsRPT.getProperty( "MsgNotRoot" );
-			if ( x != null )
-				MsgNotRoot = x;
-
-			// new override message for both successful
-			// can't have both if there is no emailer
-			if ( Mailer != null ) {
-				x = propsRPT.getProperty( "MsgBoxAndEmailSuccess" );
-				if ( x != null )
-					MsgBoxAndEmailSuccess = x;
-			}
-
-			ReportMode = ReportingMode.HTMLinMemory;
-			if ( BoxReportDest == enumBoxReportDest.BOXNONE && Mailer == null )
-				ReportMode = ReportingMode.HTMLtoBrowser;
-			else if ( Converter != null || Mailer != null )
-				ReportMode = ReportingMode.PDFFile;
-
-			// new logging modules
-			x = propsRPT.getProperty( "SuccessLog" );
-			if ( x == null )
-				x = propsRPT.getProperty( "SuccessLogSplunk" );
-			if ( x != null ) {
-				LogSuccessSplunk = new File( x );
-				SuccessWriter.setLogWriter( LogSuccessSplunk );
-			}
-			x = propsRPT.getProperty( "ErrorLog" );
-			if ( x == null )
-				x = propsRPT.getProperty( "ErrorLogSplunk" );
-			if ( x != null ) {
-				LogErrorsSplunk = new File( x );
-				ErrorWriter.setLogWriter( LogErrorsSplunk );
-			}
-			x = propsRPT.getProperty( "ProgressLogSplunk" );
-			if ( x != null )
-				LogProgressSplunk = new File( x );
-
-			x = propsRPT.getProperty( "ProgressLog" );
-			if ( x != null )
-				LogProgress = new File( x );
-
-			// override manually for testing
-			// ReportMode = ReportingMode.HTMLtoBrowser;
 
 			// finally read the database config
 			DataBase.Config( pConfigDir );
-			try {
-				DataBase.Connect();
-			} catch ( SQLException ex ) {
-				DRException drx = new DRException( APICONNECTTODATABASE, "DiscoverReportGenerator:init(db)", ex);
-				//if ( DEBUG )
-				drx.setDebug( DataBase.getConfigInfo() );
-				throw ( drx );
-			}
+			DataBase.Connect();
 
 			// print out the working config
 			// include the java temp directory
 
+		} catch ( Error err ) {
+			DRException drx = new DRException( localErrorNo, "init", localErrorMsg, err );
+			drx.setSourceClassName( err.toString() );
+			drx.disableStandardSuffix();
+			GlobalError = drx.ErrorCode;
+			GlobalErrorMessage = drx.getResponseMessage();
+			drx.setResponseMessage( null );
+			drx.sysPrint();
+
 		} catch ( DRException dre ) {
+			GlobalError = dre.ErrorCode;
 			dre.sysPrint();
+
 		}
 	}
 
@@ -390,6 +432,12 @@ public class DiscoveryReport extends HttpServlet {
 				throw new DRException( 700, "CreateDiscoveryReport:getResponseWriter", ex);
 			}
 
+			if ( GlobalError != 0 ) {
+				//quick exit, system can't run
+				throw new DRException( GlobalError, "CreateDiscoveryReport", GlobalErrorMessage );
+			}
+
+
 			//System.out.println( "*** Discovery Report Called at " + new Date() );
 			procStatus.updateStatus( 101, "URL Query=" + pRequest.getQueryString() );
 			//System.out.println( "  URL Query: " + pRequest.getQueryString() );
@@ -422,22 +470,44 @@ public class DiscoveryReport extends HttpServlet {
 			procStatus.setUserName( BoxUserName );		// should be the same, but just in case
 			procStatus.setUserLogin( BoxUserLogin );
 			if ( !IsAuthorizedToReport( UserLogin )) {
-				DRException unauth = new DRException( 701, "CreateDiscoveryReport:Auth", "Unauthorized User" );
-				unauth.setResponseMessage( MsgUnauthoized );
-				unauth.setDebug( new String[] { "UserID=" + BoxUserID, "UserName=\"" + BoxUserName, "UserLogin=" + UserLogin } );
-				throw unauth;
+				DRException drxunauth = new DRException( 701, "CreateDiscoveryReport:Auth", "Unauthorized User" );
+				drxunauth.setResponseMessage( MsgUnauthorized );
+				drxunauth.disableStandardSuffix();
+				drxunauth.setDebug( new String[] { "UserID=" + BoxUserID, "UserName=\"" + BoxUserName, "UserLogin=" + UserLogin } );
+				throw drxunauth;
 			}
 
 			/* future Step 2 - fetch file from the folder for interesting report information
 			 * build a place to hold the report data
+			 */
+
+			/*
 			 * Mar 2016 - added flag to make this optional
 			 */
-			if ( RootFolderLockdown && !bi.CheckForRootFolder( BoxFolderID )) {
-				DRException notroot = new DRException ( 707, "CreateDiscoveryReport:CheckRoot", "Report Folder Not In Root" );
-				notroot.setResponseMessage( MsgNotRoot );
-				notroot.setDebug( new String[] { "FolderID=" + BoxFolderID, "FolderName=\"" + BoxFolderName + "\"" });
-				throw notroot;
+			if ( RootFolderLockdown ) {
+				procStatus.updateStatus( 111, "Check Case Folder Parent" );
+				if ( !bi.CheckForRootFolder( BoxFolderID )) {
+					DRException drxnotroot = new DRException ( 707, "CreateDiscoveryReport:CheckRoot", "Report Folder Not In Root" );
+					drxnotroot.setResponseMessage( MsgNotRoot );
+					drxnotroot.setDebug( new String[] { "FolderID=" + BoxFolderID, "FolderName=\"" + BoxFolderName + "\"" });
+					drxnotroot.disableStandardSuffix();
+					throw drxnotroot;
+				}
 			}
+
+			/* later Mar 2016
+			 * Pre-Check the Report Folder for Writeability
+			 */
+			String parentFolderID = ( BoxReportDest == enumBoxReportDest.BOXROOT ? "0" : BoxFolderID );
+			String parentFolderName = ( BoxReportDest == enumBoxReportDest.BOXROOT ? "Root" : BoxFolderName );
+			String reportFolderName = GetReportFolderName( BoxUserName, BoxUserLogin );
+
+			// this will create the report folder if it does not exist
+			// the folder is kept in the BoxInterface class so we don't have
+			// to manage low-level stuff here
+			procStatus.updateStatus( 112, "Get Report Folder" );
+			bi.GetReportFolder( parentFolderID, reportFolderName );
+			/* end of March 2016 updates */
 
 			/* get case info as folder name */
 			//String CaseName = BoxFolderName.replace( '+', ' ' );	// simple clean up of spaces in folder name
@@ -452,9 +522,10 @@ public class DiscoveryReport extends HttpServlet {
 
 			if ( rptData.hasTooManyFiles() ) {
 				// throw new too many files error
-				DRException toomanyfiles =  new DRException( 708, "CreateDiscoveryReport:CheckSize", "Too Many Files", String.format( "%d Files Found, Reporting Cap is %d", rptData.getFileCount(), rptData.getCapSize() ));
-				toomanyfiles.setResponseMessage( MsgTooManyFiles );
-				throw toomanyfiles;
+				DRException drxtoomany =  new DRException( 708, "CreateDiscoveryReport:CheckSize", "Too Many Files", String.format( "%d Files Found, Reporting Cap is %d", rptData.getFileCount(), rptData.getCapSize() ));
+				drxtoomany.setResponseMessage( MsgTooManyFiles );
+				drxtoomany.disableStandardSuffix();
+				throw drxtoomany;
 			}
 
 			/* Step 3a - prepare the data prior to reporting */
@@ -554,42 +625,6 @@ public class DiscoveryReport extends HttpServlet {
 			String ReportName = String.format( FileNameFormat, rptData.CaseName, FileNameDate );
 			String ReportDateExpanded = String.format( ReportDateFormatExpanded, now, getDayOfMonthSuffix( now ) );
 
-			String parentFolderID = ( BoxReportDest == enumBoxReportDest.BOXROOT ? "0" : BoxFolderID );
-			String parentFolderName = ( BoxReportDest == enumBoxReportDest.BOXROOT ? "Root" : BoxFolderName );
-			String reportFolderName = "Reports";
-			if ( BoxReportFolderNameStyle != enumBoxReportFolderSuffix.NONE ) {
-				int lastoffset = BoxUserName.lastIndexOf( ' ' );
-				String lastName = BoxUserName;
-				String firstName = " ";
-				String x = "";
-				if ( lastoffset > 0 ) {
-					lastName = BoxUserName.substring( lastoffset ).trim();
-					firstName = BoxUserName.substring( 0, lastoffset-1).trim();
-					if ( firstName.length() == 0 )
-						firstName = " ";
-				}
-				switch ( BoxReportFolderNameStyle ) {
-					case LAST:
-						x = lastName;
-						break;
-					case LASTF:
-						x = lastName + " " + firstName.substring( 0, 1 );
-						break;
-					case LASTFIRST:
-						x = lastName + ", " + firstName;
-						break;
-					case LOGIN:
-						x = bi.getCurrentUserLogin();
-						int offset = x.indexOf( '@' );
-						if ( offset >= 0 )
-							x = x.substring( 0, offset );
-						break;
-				}
-				x = x.trim();
-				if ( x.length() > 0 )
-					reportFolderName += " - " + x;
-			}
-
 			String destFileName = ReportName + "." + FileExt;
 			String destCSVName = ReportName + ".csv";
 
@@ -630,10 +665,12 @@ public class DiscoveryReport extends HttpServlet {
 				}
 
 				procStatus.updateStatus( 174, String.format( "Uploading Report File [%s] to Box Folder [%s/%s](Parent ID:%s)", destFileName, parentFolderName, reportFolderName, parentFolderID ));
-				bi.UploadReport( parentFolderID, reportFolderName, destFileName, rptSource );
+				// bi.UploadReport( parentFolderID, reportFolderName, destFileName, rptSource );
+				bi.UploadReport2( destFileName, rptSource );
 				if ( csvSource != null ) {
 					procStatus.updateStatus( 175, String.format( "Uploading CSV File [%s] to Box Folder [%s/%s](Parent ID:%s)", destCSVName, parentFolderName, reportFolderName, parentFolderID ));
-					bi.UploadReport( parentFolderID, reportFolderName, destCSVName, csvSource );
+					//bi.UploadReport( parentFolderID, reportFolderName, destCSVName, csvSource );
+					bi.UploadReport2( destCSVName, csvSource );
 				}
 				procStatus.updateStatus( 179, "Upload Successful" );
 				//- System.out.println( " Upload Status: Success" );
@@ -660,12 +697,20 @@ public class DiscoveryReport extends HttpServlet {
 					successMsg += "; ";
 				if ( EmailSuccess && MsgEmailSent != null )
 					successMsg += String.format( MsgEmailSent, upFileMessage, BoxUserName, BoxUserLogin, rptData.CaseName );
-			} else if ( MsgBoxAndEmailSuccess != null && BoxSuccess && EmailSuccess ) {
-				// group messages
-				successMsg = String.format( MsgBoxAndEmailSuccess, rptData.CaseName, upFileMessage, parentFolderName, reportFolderName, BoxUserName, BoxUserLogin );
+			} else {
+				if ( BoxSuccess && EmailSuccess ) {
+					// group messages
+					successMsg = String.format( MsgBoxAndEmailSuccess, rptData.CaseName, upFileMessage, parentFolderName, reportFolderName, BoxUserName, BoxUserLogin );
+				} else {
+					if ( BoxSuccess )
+						successMsg += String.format( MsgBoxUpload, upFileMessage, parentFolderName, reportFolderName, rptData.CaseName );
+					if ( EmailSuccess )
+						successMsg += String.format( MsgEmailSent, upFileMessage, BoxUserName, BoxUserLogin, rptData.CaseName );
+				}
 			}
 
-			respWriter.write( successMsg );
+			// 2016-Apr-11 -- added filter for emdash
+			respWriter.write( filterForBoxDisplay( successMsg ));
 
 			if ( ReportMode == ReportingMode.HTMLtoBrowser ) {
 				procStatus.updateStatus( 191, "Report Returned in Browser" );
@@ -688,42 +733,22 @@ public class DiscoveryReport extends HttpServlet {
 				SuccessWriter.writeSuccess( procStatus.getLastUpdateTime(), procStatus.getProcessID(), BoxUserID, BoxUserName, BoxUserLogin, bldr.toString() );
 
 		} catch ( DRException dre ) {
+			dre.Log( procStatus, ( LogErrorsSplunk != null ? true : false ), respWriter, BoxUserID, BoxUserName, BoxUserLogin );
 
-			String errorText = procStatus.writeException( dre );
-			//-dre.print();
-
-			if ( LogErrorsSplunk != null )
-				ErrorWriter.writeException( procStatus.getLastUpdateTime(), procStatus.getProcessID(), BoxUserID, BoxUserName, BoxUserLogin, errorText /* dre */ );
-
-			String xMsg = dre.getResponseMessage();
-			if ( xMsg == null )
-				xMsg = "Unable to Create Discovery Report: " + dre.getMessage() +" [" + dre.Info +"]";
-			respWriter.print( xMsg );
+		} catch ( ExceptionInInitializerError eiie ) {
+			// this is a wrapper around the DR Exception
+			DRException dre = (DRException) eiie.getCause();
+			dre.Log( procStatus, ( LogErrorsSplunk != null ? true : false ), respWriter, BoxUserID, BoxUserName, BoxUserLogin );
 
 		// catch-all
 		} catch ( Throwable catchall ) {
 
 			DRException drx = new DRException( 500, "DiscoveryReportGenerator", "Unmanaged Exception" );
 			drx.initCause( catchall );
-			drx.setResponseMessage( "Unable to Create Discovery Report. Please contact your Systems Manager and provide error code \"500\" for more information." );
+			drx.setResponseMessage( "Unable to Create Discovery Report. Please contact your Systems Manager and provide error code 500 for more information." );
 
-			String errorText = procStatus.writeException( drx );
-			if ( LogErrorsSplunk != null )
-				ErrorWriter.writeException( procStatus.getLastUpdateTime(), procStatus.getProcessID(), BoxUserID, BoxUserName, BoxUserLogin, errorText );
+			drx.Log( procStatus, ( LogErrorsSplunk != null ? true : false ), respWriter, BoxUserID, BoxUserName, BoxUserLogin );
 
-			respWriter.print( drx.getResponseMessage() );
-
-/*
-		} catch ( Exception e ) {
-			System.out.println( "*** Unmanaged Exception: " + e.toString() );
-			e.printStackTrace( System.out );
-			respWriter.printf( "Unable to Create Discovery Report [Exception:" + e.toString() + "] - Ask Your Administrator to Check the System Log" );
-
-		} catch ( Throwable t ) {
-			System.out.println( "*** Unmanaged Throwable: " + t.toString() );
-			t.printStackTrace( System.out );
-			respWriter.printf( "Unable to Create Discovery Report [Throwable:" + t.toString() + "] - Ask Your Administrator to Check the System Log" );
-*/
 		} finally {
 			procStatus.updateStatus( 199, "Report Ended" );
 
@@ -737,6 +762,47 @@ public class DiscoveryReport extends HttpServlet {
 			}
 		}
 
+	}
+
+	private String GetReportFolderName( String BoxUserName, String BoxUserLogin ) {
+
+		if ( BoxReportFolderNameStyle == enumBoxReportFolderSuffix.NONE )
+			return ( REPORTFOLDERBASENAME );
+
+		String reportFolderName = REPORTFOLDERBASENAME;
+
+		int lastoffset = BoxUserName.lastIndexOf( ' ' );
+		String lastName = BoxUserName;
+		String firstName = " ";
+		String x = "";
+		if ( lastoffset > 0 ) {
+			lastName = BoxUserName.substring( lastoffset ).trim();
+			firstName = BoxUserName.substring( 0, lastoffset-1).trim();
+			if ( firstName.length() == 0 )
+				firstName = " ";
+		}
+		switch ( BoxReportFolderNameStyle ) {
+			case LAST:
+				x = lastName;
+				break;
+			case LASTF:
+				x = lastName + " " + firstName.substring( 0, 1 );
+				break;
+			case LASTFIRST:
+				x = lastName + ", " + firstName;
+				break;
+			case LOGIN:
+				x = BoxUserLogin;
+				int offset = x.indexOf( '@' );
+				if ( offset >= 0 )
+					x = x.substring( 0, offset );
+				break;
+		}
+		x = x.trim();
+		if ( x.length() > 0 )
+			reportFolderName += " - " + x;
+
+		return reportFolderName;
 	}
 
 	private boolean IsAuthorizedToReport( String pRequestorEmail ) {
@@ -774,6 +840,13 @@ public class DiscoveryReport extends HttpServlet {
 		return "th";
 
 	}
+
+	private String filterForBoxDisplay( String pMsg ) {
+		String s = pMsg.replaceAll( "\\p{Pd}", "-" );		// special regex for dashes "Unicode Dash punctuation" property
+		// reserved for more filters later...
+		return ( s );
+	}
+
 
 
 	/*

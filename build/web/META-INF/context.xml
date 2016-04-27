@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Context antiJARLocking="true" path="/Discovery_Report_Server">
+<Context antiJARLocking="true" path="/dr2">
   <Resource auth="Container" mail.smtp.host="localhost" name="mail/Session" type="javax.mail.Session"/>
 </Context>

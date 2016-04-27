@@ -35,7 +35,14 @@ public class EventDataReader {
 
 	static {
 		try {
-			db = new DataBase( "select EventID, BoxEventID, Type, IPAddress, DateTime, BoxUserID, BoxItemType, BoxItemID, BoxItemVersionID, Note from Events where BoxItemID=? and BoxItemVersionID=?" );
+			/* updated 27-Apr-2016 LEN
+			 * Added second query for folder events
+			 * Note query allows for null or '0' as the folder version number
+			 */
+			//db = new DataBase( "select EventID, BoxEventID, Type, IPAddress, DateTime, BoxUserID, BoxItemType, BoxItemID, BoxItemVersionID, Note from Events where BoxItemID=? and BoxItemVersionID=?" );
+			db = new DataBase( null, new String[] {
+				"select EventID, BoxEventID, Type, IPAddress, DateTime, BoxUserID, BoxItemType, BoxItemID, BoxItemVersionID, Note from Events where BoxItemID=? and ( BoxItemVersionID = '0' or BoxItemVersionID is null )",
+				"select EventID, BoxEventID, Type, IPAddress, DateTime, BoxUserID, BoxItemType, BoxItemID, BoxItemVersionID, Note from Events where BoxItemID=? and BoxItemVersionID=?"} );
 		} catch( DRException drx ) {
 			throw new ExceptionInInitializerError( drx.getCause() );
 		}
@@ -62,7 +69,23 @@ public class EventDataReader {
 //	}
 
 	public static ArrayList<EventDataReader> getEventsForFolder( String pBoxFolderID ) throws DRException {
-		return getEventsForFile( pBoxFolderID, "0" );
+
+		ArrayList<EventDataReader> events = new ArrayList<>();
+
+		try {
+			PreparedStatement s = db.getSelectStatement(0);
+			s.setString( 1, pBoxFolderID );
+
+			ResultSet rec = s.executeQuery();
+			while ( rec.next() )
+				events.add(  new EventDataReader( rec ));
+
+		} catch ( SQLException ex ) {
+			throw new DRException( 2119, "EventDataReader:getEventsForFolder", ex );
+		}
+
+		return ( events );
+
 	}
 
 	public static ArrayList<EventDataReader> getEventsForFile( String pBoxFileID, String pBoxVersionID ) throws DRException {
@@ -70,7 +93,7 @@ public class EventDataReader {
 		ArrayList<EventDataReader> events = new ArrayList<>();
 
 		try {
-			PreparedStatement s = db.getSelectStatement();
+			PreparedStatement s = db.getSelectStatement(1);
 			s.setString( 1, pBoxFileID );
 			s.setString( 2, pBoxVersionID);
 

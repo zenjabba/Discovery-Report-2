@@ -33,8 +33,13 @@ public class UserInfo {
 
 	public String getID() {	return ID; }
 	public String getFullName() {
+		/* kludge for User ID '1'
+		 * added 27-Apr-2016 - LEN
+		 */
+		if ( ID.equals( "1" ) )
+			return "SYSTEM";
 		/* kludge for "Someone" */
-		if ( FullName.toLowerCase().equals(  "someone" ))
+		if ( FullName.toLowerCase().equals( "someone" ))
 			return "USAFx";
 		return FullName;
 	}

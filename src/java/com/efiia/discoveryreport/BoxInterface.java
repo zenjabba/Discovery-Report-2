@@ -33,6 +33,7 @@ public class BoxInterface {
 	private final BoxAPIConnection api;
 
 	private BoxUser curUser = null;
+	private BoxFolder destFolder = null;
 
 	public BoxInterface( String pDevToken ) throws DRException {
 
@@ -66,7 +67,7 @@ public class BoxInterface {
 	 * @param pBoxUserName User Name for error report only
 	 * @throws DRException
 	 */
-	public void GetCurrentUser( String pBoxUserID, String pBoxUserName ) throws DRException {
+	public BoxUser GetCurrentUser( String pBoxUserID, String pBoxUserName ) throws DRException {
 		try {
 			curUser = BoxUser.getCurrentUser( api );
 		} catch ( BoxAPIException e ) {
@@ -76,6 +77,7 @@ public class BoxInterface {
 			// drx.setDebug( new String[] { "UserID=" + pBoxUserID, "UserName=\"" + pBoxUserName + "\"" } );
 			throw ( drx );
 		}
+		return ( curUser );
 	}
 
 	public String getCurrentUserName() {
@@ -86,7 +88,15 @@ public class BoxInterface {
 		return ( curUser != null ? curUser.getInfo().getLogin() : null );
 	}
 
-	public boolean UploadReport( String pFolderID, String pReportFolderName, String pReportName, InputStream pReportStream ) throws DRException {
+	public String getDestFolderID() {
+		return ( destFolder != null ? destFolder.getID() : null );
+	}
+
+	public String getDestFolderName() {
+		return ( destFolder != null ? destFolder.getInfo().getName() : null );
+	}
+
+	public boolean old_UploadReport( String pFolderID, String pReportFolderName, String pReportName, InputStream pReportStream ) throws DRException {
 
 		// todo - get location of error with step info...
 		int errNumber = 740;		// generic
@@ -189,47 +199,134 @@ public class BoxInterface {
 		return ( true );
 	}
 
-//	public void UploadReport( String pFolderID, InputStream pReportStream ) {
-//
-//		// create new connection to box
-//		BoxAPIConnection api = new BoxAPIConnection( "dcuKj88I4SWZOKSRiSl5cxomqSfdDxwG" );
-//
-//		// check for existing 'report' subfolder in parent
-//		BoxFolder baseFldr = new BoxFolder( api, pFolderID );
-//		BoxFolder reportFolder = null;
-//		try {
-//			BoxFolder.Info rFldrI = baseFldr.createFolder( "report2" );
-//			reportFolder = rFldrI.getResource();
-//
-//		} catch ( BoxAPIException e ) {
-//			// thrown if the folder exists?
-//			/* {
-//				"type":"error",
-//				"status":409,
-//				"code":"item_name_in_use",
-//				"context_info": {
-//					"conflicts":[{
-//						"type":"folder",
-//						"id":"2875414895",
-//						"sequence_id":"0",
-//						"etag":"0",
-//						"name":"report"}]},
-//				"help_url":"http:\/\/developers.box.com\/docs\/#errors",
-//				"message":"Item with the same name already exists",
-//				"request_id":"200608153854a0f588e96d6"
-//				}
-//			*/
-//			if ( e.getResponseCode() == 409 ) {	// conflict - name already in use we hope
-//				// need to extract the folder id from the JSON data
-//				JsonObject errInfo = JsonObject.readFrom( e.getResponse() );
-//				JsonValue errInfo2 = errInfo.get( "context_info" );
-//				JsonValue errInfo3 = errInfo.get( "id" );
-//			}
-//		}
-//
-//		// upload report file to box
-//		BoxFile.Info upBoxFile = reportFolder.uploadFile( pReportStream, "Discovery Report.html" );
-//	}
+	public BoxFolder GetReportFolder( String pParentFolderID, String pReportFolderName ) throws DRException {
+
+		destFolder = null;
+
+		int errNumber = 750;		// generic
+		String errModule = "GenericBOXAPI";
+		String errDebug[] = null;
+
+		try {
+			errNumber = 751;
+			errModule = "BoxAPI:BoxFolder";
+			errDebug = new String[] { "ParentFolderID=" + pParentFolderID };
+			BoxFolder baseFldr = new BoxFolder( api, pParentFolderID );
+
+			// walk the folder to see if there is already a report folder
+			errNumber = 752;
+			errModule = "BoxAPI:BoxFolder.getChildren";
+			errDebug = new String[] { "BaseFolderID=" + baseFldr.getID(), "FolderInfo=" + baseFldr.getInfo().getName() };
+			for( BoxItem.Info item : baseFldr.getChildren( "name", "id", "permissions") ) {
+				if ( item.getName().equals( pReportFolderName ) && item instanceof BoxFolder.Info ) {
+					BoxFolder.Info bfi = (BoxFolder.Info)item;
+					if ( bfi.getPermissions().contains( BoxFolder.Permission.CAN_UPLOAD )) {
+						errModule = "BoxAPI:BoxFolder.Info.getResource";
+						errNumber = 753;
+						errDebug = new String[] { "ItemName=\"" + bfi.getName() + "\"", "ItemID=" + bfi.getID() };
+						destFolder = bfi.getResource();
+						break;
+					}
+				}
+			}
+
+			if ( destFolder == null ) {
+				errNumber = 754;
+				errModule = "BoxAPI:BoxFolder.createFolder";
+				// if ( DEBUG )
+				errDebug = new String[] { "FolderName=\"" + pReportFolderName + "\""};
+				BoxFolder.Info rFldrI = baseFldr.createFolder( pReportFolderName );
+
+				errNumber = 755;
+				errModule = "BoxAPI:BoxFolder.getResource";
+				errDebug = null;
+				destFolder = rFldrI.getResource();
+			}
+
+		} catch ( BoxAPIException e ) {
+			DRException drx = new DRException( errNumber, errModule, e.getResponseCode(), e.getMessage(), e.getResponse() );
+			if ( errDebug != null ) drx.setDebug( errDebug );
+			throw ( drx );
+		}
+		catch ( Exception e ) {
+			DRException drx = new DRException( errNumber, errModule, e );
+			if ( errDebug != null ) drx.setDebug( errDebug );
+			throw ( drx );
+		}
+		catch ( Throwable t ) {
+			DRException drx = new DRException( errNumber, errModule, t.getMessage() );
+			if ( errDebug != null ) drx.setDebug( errDebug );
+			throw ( drx );
+		}
+
+		return ( destFolder );
+	}
+
+	public boolean UploadReport2( String pReportName, InputStream pReportStream ) throws DRException {
+
+		// todo - get location of error with step info...
+		int errNumber = 740;		// generic
+		String errModule = "GenericBOXAPI";
+		String errDebug[] = null;
+
+		if ( destFolder == null ) {
+			DRException drx = new DRException( 741, "BoxAPI:UploadReport", "No Destination Folder Set" );
+			throw ( drx );
+		}
+
+		try {
+
+			// upload report file to box
+			// find the old one first to overwrite
+			boolean newFileFlag = true;
+			errNumber = 746;
+			errModule = "BoxAPI:BoxItem.Info.(Iterate)";
+			//if ( DEBUG )
+			errDebug = new String[] { "ReportFolderID=" + destFolder.getID(), "ReportFolderName=\"" + destFolder.getInfo().getName() + "\"" };
+			for ( BoxItem.Info item2 : destFolder ) {
+				if ( item2.getName().equals( pReportName ) && item2 instanceof BoxFile.Info ) {
+					BoxFile.Info rFile = (BoxFile.Info)item2;
+					errNumber = 747;
+					errModule = "BoxAPI:BoxFile.Info.getResource";
+					// if ( DEBUG )
+					errDebug = new String[] { "ResourceName=\"" + item2.getName() +"\"", "ResourceID=" + item2.getID() };
+					BoxFile bFile = rFile.getResource();
+					errNumber = 748;
+					errModule = "BoxAPI:BoxFile.uploadVersion";
+					// same debug info
+					bFile.uploadVersion( pReportStream );
+					newFileFlag = false;
+					break;
+				}
+			}
+
+			// no existing file, just upload the new one
+			if ( newFileFlag ) {
+				errNumber = 749;
+				errModule = "BoxAPI:BoxFolder.uploadFile";
+				//if ( DEBUG )
+				errDebug = new String[] { "UploadName=\"" + pReportName + "\""};
+				destFolder.uploadFile( pReportStream, pReportName );
+			}
+
+		} catch ( BoxAPIException e ) {
+			DRException drx = new DRException( errNumber, errModule, e.getResponseCode(), e.getMessage(), e.getResponse() );
+			if ( errDebug != null ) drx.setDebug( errDebug );
+			throw ( drx );
+		}
+		catch ( Exception e ) {
+			DRException drx = new DRException( errNumber, errModule, e );
+			if ( errDebug != null ) drx.setDebug( errDebug );
+			throw ( drx );
+		}
+		catch ( Throwable t ) {
+			DRException drx = new DRException( errNumber, errModule, t.getMessage() );
+			if ( errDebug != null ) drx.setDebug( errDebug );
+			throw ( drx );
+		}
+
+		return ( true );
+	}
 
 	public boolean CheckForRootFolder( String pFolderID ) throws DRException {
 

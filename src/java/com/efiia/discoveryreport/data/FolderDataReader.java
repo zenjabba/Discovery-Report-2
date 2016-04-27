@@ -26,7 +26,8 @@ public class FolderDataReader {
 								},
 								null );
 		} catch ( DRException ex ) {
-			throw new ExceptionInInitializerError( ex );
+			ExceptionInInitializerError ee = new ExceptionInInitializerError( ex );
+			throw ( ee );
 		}
 	}
 

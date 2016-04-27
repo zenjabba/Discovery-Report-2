@@ -76,7 +76,7 @@ public class ProcessWriter {
 		}
 	}
 
-	public String writeException( DRException pDRE ) {
+	public void writeException( DRException pDRE ) {
 
 		myLastUpdate = LocalDateTime.now();
 
@@ -113,10 +113,11 @@ public class ProcessWriter {
 
 			Throwable cause = pDRE.getCause();
 			if ( cause != null ) {
-				if ( pDRE.getMessage() == null )
+				String cmsg = cause.getMessage();
+				if ( cmsg == null )
 					lines.add( String.format("%s %s    | Exception=%s", myLastUpdate, myProcessID, cause.getClass().getName() ));
-				else if ( !cause.getMessage().equals( pDRE.getMessage()))
-					lines.add( String.format("%s %s    | Exception=%s: %s", myLastUpdate, myProcessID, cause.getClass().getName(), cause.getMessage() ));
+				else if ( !cmsg.equals( pDRE.getMessage()))
+					lines.add( String.format("%s %s    | Exception=%s: %s", myLastUpdate, myProcessID, cause.getClass().getName(), cmsg ));
 				// convert to strings
 				boolean SeenFlag = false;
 				//lines.add( String.format("%s %s    | %s", myLastUpdate, myProcessID, "StackTrace:" ));
@@ -133,65 +134,8 @@ public class ProcessWriter {
 		}
 
 		// new format for splunk
-		////
-		StringBuilder bldr = new StringBuilder();
-
-		bldr.append( "ErrorCode=").append( pDRE.ErrorCode );
-
-		if ( pDRE.SubErrorCode > 0 ) {
-			bldr.append( " SubError=").append( pDRE.SubErrorCode);
-		}
-		bldr.append( " Module=\"" ).append( pDRE.Module ).append( "\"");
-		bldr.append( " Message=\"").append( pDRE.getMessage() ).append(  "\"" );
-		if ( pDRE.Info != null ) {
-			bldr.append( " Info=\"" ).append(  pDRE.Info ).append( "\"" );
-		}
-
-		if ( pDRE.Extra != null ) {
-			for ( String x : pDRE.Extra ) {
-				bldr.append( " " ).append( x );
-			}
-		}
-
-		if ( pDRE.Debug != null ) {
-			for ( String x : pDRE.Debug ) {
-				bldr.append( " " ).append( x );
-			}
-		}
-
-		Throwable cause = pDRE.getCause();
-		if ( cause != null ) {
-			if ( pDRE.getMessage() == null )
-				bldr.append( " ErrorCause=\"" + cause.getClass().getName() + "\"");
-			else if ( !cause.getMessage().equals(  pDRE.getMessage() ))		// some exceptions don't have a message
-				bldr.append( " ErrorCause=\"" + cause.getClass().getName() + ": " + cause.getMessage() + "\"");
-			// convert to strings
-			StringBuilder stbldr = new StringBuilder();
-			String xClass;
-			Boolean xTest;
-			int ctr = 0;
-			final String Me = "com.efiia.discoveryreport";
-			for ( StackTraceElement ste : cause.getStackTrace() ) {
-				// only go as deep as the third call to com.efiia.discoveryreport or once that appears, and goes elsewhere
-				xClass = ste.getClassName();
-				xTest = xClass.startsWith( Me );
-				if ( xTest )
-					ctr++;
-				stbldr.append( ",\"" ).append( ste.toString() ).append( "\"");
-				//if ( ctr >= 3 )
-				//	break;
-				//else
-				if ( ctr > 0 && !xTest )
-					break;
-			}
-			stbldr.deleteCharAt( 0 );
-			bldr.append( " StackTrace=[").append( stbldr ).append( "]");
-		}
-
 		if ( splunkLogger != null )
-			splunkLogger.Write( String.format("%s TaskID=%s BoxUserID=%s BoxUserName=\"%s\" BoxUserLogin=\"%s\" TaskCode=%d TaskStatus=\"Error\" %s", myLastUpdate, myProcessID, myUserID, myUserName, myUserLogin, myLastStatus, bldr ));
-
-		return ( bldr.toString() );
+			splunkLogger.Write( String.format("%s TaskID=%s BoxUserID=%s BoxUserName=\"%s\" BoxUserLogin=\"%s\" TaskCode=%d TaskStatus=\"Error\" %s", myLastUpdate, myProcessID, myUserID, myUserName, myUserLogin, myLastStatus, pDRE.getSplunkText() ));
 
 	}
 }
