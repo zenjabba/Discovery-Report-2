@@ -40,6 +40,9 @@ public class FileEvent {
 	public String getActor() {
 		/* kludge for User ID '1'
 		 * added 27-Apr-2016 - LEN
+		 * 9-Jul-2016 Comment per Box Teleconference
+		 * ID '2' is open share link anymnous users and if they show up in this system
+		 * should turn into an error condition
 		 */
 		if ( ActorID.equals( "1" ) )
 			return "SYSTEM";

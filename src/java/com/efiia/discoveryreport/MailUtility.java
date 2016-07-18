@@ -63,7 +63,9 @@ public class MailUtility {
 		try {
 			MimeMessage msg = new MimeMessage( MailSession );
 
-			msg.setFrom( String.format( "\"%s\" <%s>", pFromName, pFromEmail) );
+			// 2016-May - change to match what Brian did manuall
+			// msg.setFrom( String.format( "\"%s\" <%s>", pFromName, pFromEmail) );
+			msg.setFrom( String.format( "\"%s\" <%s>", pFromName, "noreply@esfs.us" ));
 			msg.setSubject( pSubject );
 			msg.setRecipients( Message.RecipientType.TO, pDestEmail );
 			//msg.setRecipients( Message.RecipientType.TO, "larry@smoke-mirrors.com.au" );

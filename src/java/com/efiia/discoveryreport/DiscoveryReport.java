@@ -110,8 +110,11 @@ public class DiscoveryReport extends HttpServlet {
 //	public final static String APPDATE = "21-Mar-2016";
 //	public final static String APPVER = "2.2.6";			// Fix for emdash display in Box Pop-up
 //	public final static String APPDATE = "11-Apr-2016";
-	public final static String APPVER = "2.2.7";			// Fix for get folder events, User 1 as "SYSTEM"
-	public final static String APPDATE = "27-Apr-2016";
+//	public final static String APPVER = "2.2.7";			// Fix for get folder events, User 1 as "SYSTEM"
+//	public final static String APPDATE = "27-Apr-2016";
+															// Fix for mail to noreply@esfs.us, other minor cleanup
+	public final static String APPVER = "2.2.8";			// Fix for get folder events, User 1 as "SYSTEM"
+	public final static String APPDATE = "18-Jul-2016";		// Enhancement for emailoverride
 
 	/**
 	 * Returns a short description of the servlet.
@@ -190,6 +193,9 @@ public class DiscoveryReport extends HttpServlet {
 	String GlobalErrorMessage = null;
 
 	private boolean loadMail;
+
+	// new july 2016
+	String eMailOverride = null;
 
 	private void readBoxConfig( File pConfigDir ) throws DRException {
 		// read box api file;
@@ -291,6 +297,10 @@ public class DiscoveryReport extends HttpServlet {
 		x = propsRPT.getProperty( "EmailReportFlag" );
 		loadMail = ( x != null && Character.toLowerCase( x.charAt( 0 )) == 'y' ? true : false );
 
+		x = propsRPT.getProperty( "EmailOverride" );
+		if ( x != null )
+			eMailOverride = x;
+
 		x = propsRPT.getProperty( "FileCap" );
 		if ( x != null ) {
 			try {
@@ -383,9 +393,6 @@ public class DiscoveryReport extends HttpServlet {
 			DataBase.Config( pConfigDir );
 			DataBase.Connect();
 
-			// print out the working config
-			// include the java temp directory
-
 		} catch ( Error err ) {
 			DRException drx = new DRException( localErrorNo, "init", localErrorMsg, err );
 			drx.setSourceClassName( err.toString() );
@@ -454,8 +461,6 @@ public class DiscoveryReport extends HttpServlet {
 			String BoxDevToken = pRequest.getParameter( "devtoken" );
 
 			String FileExt = "html";
-
-			String eMailOverride = ( BoxAuthCode == null ? pRequest.getParameter( "emailto") : null );	// this is only in effect if the dev token is valid, otherwise we get kicked out
 
 			// other parameters already found in init routine
 
@@ -557,14 +562,14 @@ public class DiscoveryReport extends HttpServlet {
 
 				case HTMLinMemory:
 					// use a byte steam and output directly
-					procStatus.updateStatus( 132, "Preparing Output to Browser" );
+					procStatus.updateStatus( 132, "Preparing Output to Memory" );
 					baos = new ByteArrayOutputStream();
 					bw = new PrintWriter( baos );
 					break;
 
 				case HTMLFile:
 				case PDFFile:
-					procStatus.updateStatus( 133, "Preparing Output to Browser" );
+					procStatus.updateStatus( 133, "Preparing Output to File" );
 					try {
 						tmpRpt = File.createTempFile( "DiscRpt", ".html" );
 						bw = new PrintWriter( tmpRpt );
@@ -677,13 +682,20 @@ public class DiscoveryReport extends HttpServlet {
 				BoxSuccess = true;
 			}
 
+			/* added email override statuses, etc
+			 * LEN - July 2016
+			 */
 			if ( Mailer != null ) {
-				if ( eMailOverride != null )	// for testing only, override the email address
-					BoxUserLogin = eMailOverride;
+				String eMailDestAddr = ( eMailOverride != null ? eMailOverride : BoxUserLogin );		// override the email address
+				String eMailDestName = ( eMailOverride != null ? "(eMail Override)" : BoxUserName );
+				String eMailSubject = ( eMailOverride != null ? "Diverted Discovery Report: " + ReportName : ReportName );
 				String msgText = String.format( EmailTemplate, rptData.CaseName, ReportDateExpanded );
-				procStatus.updateStatus( 180, String.format( "Emailing Report to [%s <%s>]", BoxUserName, BoxUserLogin ));
-				Mailer.SendMessage(BoxUserLogin, BoxUserName, BoxUserLogin, ReportName, msgText, tmpRpt, destFileName, tmpCSV, destCSVName );
-				procStatus.updateStatus( 189, String.format( "eMail Sent to [%s/<%s>] with Attachments [%s]", BoxUserName, BoxUserLogin, destFileName ));
+				procStatus.updateStatus( 180, String.format( "Emailing Report to [%s <%s>]", eMailDestName, eMailDestAddr ));
+				Mailer.SendMessage( eMailDestAddr, BoxUserName, BoxUserLogin, eMailSubject, msgText, tmpRpt, destFileName, tmpCSV, destCSVName );
+				if ( eMailOverride != null )
+					procStatus.updateStatus( 188, String.format( "eMail Diverted from [%s/<%s>] to [%s] with Attachments [%s]", BoxUserName, BoxUserLogin, eMailDestAddr, destFileName ));
+				else
+					procStatus.updateStatus( 189, String.format( "eMail Sent to [%s/<%s>] with Attachments [%s]", eMailDestName, eMailDestAddr, destFileName ));
 				EmailSuccess = true;
 			}
 			procStatus.updateStatus( 190, "Report Completed" );
